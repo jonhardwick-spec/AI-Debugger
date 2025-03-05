@@ -1,0 +1,24 @@
+{
+  "manifest_version": 3,
+  "name": "Chat Flow Debugger",
+  "version": "1.0",
+  "description": "Debugs AI chat data flow with max info, activated by /debuggerplugin in console.",
+  "permissions": ["storage", "activeTab", "webRequest"],
+  "content_scripts": [
+    {
+      "matches": [
+        "https://grok.com/*",
+        "https://chat.openai.com/*",
+        "https://deepseek.com/*",
+        "https://qwen.ai/*",
+        "https://anthropic.com/*",
+        "<all_urls>"
+      ],
+      "js": ["chatFlowDebugger.js"],
+      "run_at": "document_start"
+    }
+  ],
+  "action": {
+    "default_title": "Chat Flow Debugger"
+  }
+}
