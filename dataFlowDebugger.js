@@ -15,12 +15,8 @@
   let guiListeners = [];
   let consoleVisible = true;
 
-  function isContextValid() {
-    return typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.id;
-  }
-
   function log(type, ...args) {
-    if (!isActive || !isContextValid()) return;
+    if (!isActive) return;
     const now = Date.now();
     if (now - lastLogTime < DEBOUNCE_MS) return;
     lastLogTime = now;
@@ -91,9 +87,8 @@
   }
 
   function updateConsole() {
-    if (!isContextValid()) return;
     const consoleDiv = document.getElementById('data-debug-console');
-    if (!consoleDiv || !isActive) return;
+    if (!consoleDiv) return;
     consoleDiv.style.display = consoleVisible ? 'flex' : 'none';
     consoleDiv.innerHTML = debugLogs.map(log => {
       const color = log.type === '[Site]' ? '#0ff' : log.type === '[Network]' ? '#0f0' : log.type === '[Trimmer]' ? '#ff0' : '#f0f';
@@ -117,7 +112,7 @@
       elements[type] = [];
       selList.forEach(sel => {
         Array.from(document.querySelectorAll(sel)).forEach(el => {
-          if (el.nodeType === 1 && !elements[type].some(e => e.element === el)) { // Only elements
+          if (el.nodeType === 1 && !elements[type].some(e => e.element === el)) {
             elements[type].push({
               element: el,
               tag: el.tagName.toLowerCase(),
@@ -138,7 +133,7 @@
   }
 
   function trackMessages(elements) {
-    const messages = elements.messages.map(m => m.element).filter(el => el && el.nodeType === 1); // Filter valid elements
+    const messages = elements.messages.map(m => m.element).filter(el => el && el.nodeType === 1);
     const newMessages = messages.slice(-KEEP_COUNT);
 
     newMessages.forEach((msg, index) => {
@@ -187,49 +182,20 @@
   function getElementDepth(el) {
     let depth = 0;
     let current = el;
-    while (current && current.parentElement) { // Null check
+    while (current && current.parentElement) {
       depth++;
       current = current.parentElement;
     }
     return depth;
   }
 
-  function injectToggleButton() {
-    if (document.getElementById('data-debug-toggle')) return;
-    const button = document.createElement('button');
-    button.id = 'data-debug-toggle';
-    button.textContent = 'Data';
-    button.style.cssText = `
-      position: fixed; top: 10px; left: 10px; z-index: 10000 !important; 
-      width: 40px; height: 40px; border-radius: 50%; 
-      background: ${isActive ? '#0f0' : '#f00'}; color: #fff; 
-      border: none; cursor: pointer; font-size: 12px; text-align: center;
-    `;
-    document.body.appendChild(button);
-
-    button.addEventListener('click', () => {
-      if (!isContextValid()) return;
-      isActive = !isActive;
-      button.style.background = isActive ? '#0f0' : '#f00';
-      if (isActive) {
-        startTime = Date.now();
-        initDebugger();
-        ensureDebugGUI();
-      } else {
-        cleanupDebugger();
-      }
-      logPlugin(`Data Flow Debugger ${isActive ? 'activated' : 'deactivated'}`);
-      updateStats();
-    });
-    logPlugin('Toggle button injected');
-  }
-
   function injectDebugGUI() {
     if (document.getElementById('data-debug-gui')) return;
+    console.log('[Debugger] Injecting GUI');
     const gui = document.createElement('div');
     gui.id = 'data-debug-gui';
     gui.style.cssText = `
-      position: fixed; bottom: 10px; right: 10px; z-index: 10000 !important; 
+      position: fixed; bottom: 10px; right: 10px; z-index: 99999 !important; 
       background: #000; color: #fff; padding: 8px; border-radius: 4px; 
       font-size: 12px; width: 380px; max-height: 80vh; 
       box-shadow: 0 0 10px rgba(0,0,0,0.5); display: flex; flex-direction: column;
@@ -240,7 +206,8 @@
         <label><input type="checkbox" id="debug-site" ${debugSite ? 'checked' : ''}> Site</label>
         <label><input type="checkbox" id="debug-network" ${debugNetwork ? 'checked' : ''}> Network</label>
         <label><input type="checkbox" id="debug-trimmer" ${debugTrimmer ? 'checked' : ''}> Trimmer</label>
-        <button id="toggle-console" style="background: #000; border: 1px solid #00f; color: #fff; padding: 2px 4px;">${consoleVisible ? 'Hide' : 'Show'} Console</button>
+        <button id="debug-toggle" style="background: ${isActive ? '#f00' : '#0f0'}; border: none; color: #fff; padding: 2px 4px;">${isActive ? 'Stop Debug' : 'Debug'}</button>
+        <button id="console-toggle" style="background: #000; border: 1px solid #00f; color: #fff; padding: 2px 4px;">${consoleVisible ? 'Hide Console' : 'Show Console'}</button>
         <button id="copy-logs" style="background: #000; border: 1px solid #f00; color: #fff; padding: 2px 4px;">Copy Logs</button>
         <button id="copy-history" style="background: #000; border: 1px solid #0f0; color: #fff; padding: 2px 4px;">Copy History</button>
         <button id="delete-data" style="background: #000; border: 1px solid #ff0; color: #fff; padding: 2px 4px;">Delete</button>
@@ -249,39 +216,57 @@
       <div id="stats" style="margin-top: 8px; padding: 4px; background: #111; border-radius: 2px;"></div>
     `;
     document.body.appendChild(gui);
+    console.log('[Debugger] GUI injected');
 
+    // Bind listeners after injection
     const addListener = (id, event, handler) => {
       const element = document.getElementById(id);
       if (element) {
         element.addEventListener(event, (e) => {
-          if (!isContextValid()) return;
+          console.log(`[Debugger] ${id} clicked`);
           handler(e);
         });
         guiListeners.push({ element, event, handler });
+      } else {
+        console.log(`[Debugger] Element #${id} not found`);
       }
     };
 
+    addListener('debug-toggle', 'click', () => {
+      isActive = !isActive;
+      const toggleButton = document.getElementById('debug-toggle');
+      toggleButton.textContent = isActive ? 'Stop Debug' : 'Debug';
+      toggleButton.style.background = isActive ? '#f00' : '#0f0';
+      if (isActive) {
+        startTime = Date.now();
+        initDebugger();
+      } else {
+        cleanupDebugger();
+      }
+      logPlugin(`Data Flow Debugger ${isActive ? 'started' : 'stopped'}`);
+      updateStats();
+    });
+    addListener('console-toggle', 'click', () => {
+      consoleVisible = !consoleVisible;
+      const toggleButton = document.getElementById('console-toggle');
+      toggleButton.textContent = consoleVisible ? 'Hide Console' : 'Show Console';
+      updateConsole();
+      logPlugin(`Console ${consoleVisible ? 'shown' : 'hidden'}`);
+    });
     addListener('debug-site', 'change', (e) => {
       debugSite = e.target.checked;
-      chrome.storage.sync.set({ debugSite });
+      if (chrome.storage) chrome.storage.sync.set({ debugSite });
       logSite(`Site debug ${debugSite ? 'on' : 'off'}`);
     });
     addListener('debug-network', 'change', (e) => {
       debugNetwork = e.target.checked;
-      chrome.storage.sync.set({ debugNetwork });
+      if (chrome.storage) chrome.storage.sync.set({ debugNetwork });
       logNetwork(`Network debug ${debugNetwork ? 'on' : 'off'}`);
     });
     addListener('debug-trimmer', 'change', (e) => {
       debugTrimmer = e.target.checked;
-      chrome.storage.sync.set({ debugTrimmer });
+      if (chrome.storage) chrome.storage.sync.set({ debugTrimmer });
       logTrimmer(`Trimmer debug ${debugTrimmer ? 'on' : 'off'}`);
-    });
-    addListener('toggle-console', 'click', () => {
-      consoleVisible = !consoleVisible;
-      const toggleButton = document.getElementById('toggle-console');
-      toggleButton.textContent = consoleVisible ? 'Hide Console' : 'Show Console';
-      updateConsole();
-      logPlugin(`Console visibility: ${consoleVisible ? 'on' : 'off'}`);
     });
     addListener('copy-logs', 'click', () => {
       navigator.clipboard.writeText(debugLogs.map(l => l.text).join('\n'))
@@ -301,22 +286,12 @@
       messageHistory = [];
       startTime = 0;
       logPlugin('Data and history deleted');
-      updateConsole();
       updateStats();
+      updateConsole();
     });
-
-    logPlugin('Debug GUI and console injected');
-  }
-
-  function ensureDebugGUI() {
-    if (!document.getElementById('data-debug-gui')) {
-      logPlugin('GUI missing—retrying injection');
-      injectDebugGUI();
-    }
   }
 
   function updateStats() {
-    if (!isContextValid()) return;
     const stats = document.getElementById('stats');
     if (stats) {
       const uptime = isActive && startTime ? Math.round((Date.now() - startTime) / 1000) : 0;
@@ -325,32 +300,32 @@
   }
 
   function cleanupDebugger() {
-    if (observer) observer.disconnect();
-    startTime = 0;
+    if (observer) {
+      observer.disconnect();
+      observer = null;
+    }
+    startTime = 0; // Reset uptime, keep logs/history
     guiListeners.forEach(({ element, event, handler }) => {
-      if (element) element.removeEventListener(event, handler);
+      if (element && element.removeEventListener) element.removeEventListener(event, handler);
     });
     guiListeners = [];
-    const consoleDiv = document.getElementById('data-debug-console');
-    if (consoleDiv) consoleDiv.style.display = 'none';
+    logPlugin('Debugger stopped—logs preserved');
   }
 
   function initDebugger() {
-    if (!isContextValid()) return;
-    logPlugin('Activating Data Flow Debugger');
+    logPlugin('Starting Data Flow Debugger');
     const elements = findDataElements();
-    injectDebugGUI();
     trackMessages(elements);
     debugChatTrimmer();
 
     if (observer) observer.disconnect();
     observer = new MutationObserver((mutations) => {
       requestIdleCallback(() => {
-        if (!isContextValid()) return;
+        if (!isActive) return;
         mutations.forEach(m => {
           const now = Date.now();
-          const added = Array.from(m.addedNodes).filter(n => n.nodeType === 1); // Only elements
-          const removed = Array.from(m.removedNodes).filter(n => n.nodeType === 1); // Only elements
+          const added = Array.from(m.addedNodes).filter(n => n.nodeType === 1);
+          const removed = Array.from(m.removedNodes).filter(n => n.nodeType === 1);
           logSite(`--- Mutation ---`);
           logSite(`Timestamp: ${new Date(now).toISOString()}`);
           logSite(`Type: ${m.type}, Target: ${m.target.tagName ? m.target.tagName.toLowerCase() : 'Unknown'}#${m.target.id || 'no-id'}`);
@@ -413,19 +388,27 @@
     logNetwork(`Page started: ${document.location.href}`);
 
     setInterval(() => {
-      if (!isContextValid()) return;
+      if (!isActive) return;
       const newElements = findDataElements();
       trackMessages(newElements);
       debugChatTrimmer();
     }, 5000);
   }
 
-  chrome.storage.sync.get(['debugSite', 'debugNetwork', 'debugTrimmer'], (data) => {
-    if (!isContextValid()) return;
-    debugSite = data.debugSite !== undefined ? data.debugSite : true;
-    debugNetwork = data.debugNetwork !== undefined ? data.debugNetwork : true;
-    debugTrimmer = data.debugTrimmer !== undefined ? data.debugTrimmer : true;
-    injectToggleButton();
-    console.log('[Data Flow Debugger] Loaded, click the top-left button to toggle');
-  });
+  function ensureGUI() {
+    if (!document.body) {
+      setTimeout(ensureGUI, 100);
+      return;
+    }
+    injectDebugGUI();
+    if (chrome.storage) {
+      chrome.storage.sync.get(['debugSite', 'debugNetwork', 'debugTrimmer'], (data) => {
+        debugSite = data.debugSite !== undefined ? data.debugSite : true;
+        debugNetwork = data.debugNetwork !== undefined ? data.debugNetwork : true;
+        debugTrimmer = data.debugTrimmer !== undefined ? data.debugTrimmer : true;
+      });
+    }
+  }
+
+  ensureGUI();
 })();
