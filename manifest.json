@@ -1,9 +1,15 @@
 {
   "manifest_version": 3,
-  "name": "Chat Flow Debugger",
+  "name": "Data Flow Debugger (Chrome/Opera)",
   "version": "1.0",
-  "description": "Debugs AI chat data flow with max info, toggled by top-left button.",
-  "permissions": ["storage", "activeTab", "webRequest", "scripting"],
+  "description": "Advanced debugger for maxing out web data flow info with a reverse console.",
+  "permissions": [
+    "storage",
+    "activeTab",
+    "webRequest",
+    "scripting",
+    "webNavigation"
+  ],
   "content_scripts": [
     {
       "matches": [
@@ -14,11 +20,11 @@
         "https://anthropic.com/*",
         "<all_urls>"
       ],
-      "js": ["chatFlowDebugger.js"],
+      "js": ["dataFlowDebugger.js"],
       "run_at": "document_start"
     }
   ],
   "action": {
-    "default_title": "Chat Flow Debugger"
+    "default_title": "Data Flow Debugger"
   }
 }
