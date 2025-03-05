@@ -2,8 +2,8 @@
   "manifest_version": 3,
   "name": "Chat Flow Debugger",
   "version": "1.0",
-  "description": "Debugs AI chat data flow with max info, activated by /debuggerplugin in console.",
-  "permissions": ["storage", "activeTab", "webRequest"],
+  "description": "Debugs AI chat data flow with max info, toggled by top-left button.",
+  "permissions": ["storage", "activeTab", "webRequest", "scripting"],
   "content_scripts": [
     {
       "matches": [

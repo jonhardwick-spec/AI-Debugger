@@ -32,7 +32,7 @@
     if (debugPlugin) log('[Plugin]', ...args);
   }
 
-  // Detailed element logger
+  // Ultra-detailed element logger
   function logElement(el, label = 'Element', indent = '') {
     const tag = el.tagName.toLowerCase();
     const id = el.id || 'None';
@@ -42,17 +42,33 @@
       .join(', ') || 'None';
     const text = el.textContent.trim().slice(0, 50) + (el.textContent.length > 50 ? '...' : '') || 'None';
     const styles = getComputedStyle(el);
-    const keyStyles = `display: ${styles.display}, position: ${styles.position}, visibility: ${styles.visibility}`;
+    const keyStyles = `display: ${styles.display}, pos: ${styles.position}, vis: ${styles.visibility}, bg: ${styles.backgroundColor}, color: ${styles.color}`;
+    const rect = el.getBoundingClientRect();
+    const bounds = `x: ${rect.x}, y: ${rect.y}, w: ${rect.width}, h: ${rect.height}`;
     const depth = getElementDepth(el);
     const title = el.title || el.getAttribute('aria-label') || 'None';
+    const parent = el.parentElement ? `${el.parentElement.tagName.toLowerCase()}#${el.parentElement.id || 'no-id'}` : 'None';
+    const children = Array.from(el.children).map(c => c.tagName.toLowerCase()).join(', ') || 'None';
+    const listeners = getEventListeners(el);
+    const events = Object.keys(listeners).join(', ') || 'None';
 
-    logSite(`${indent}${label}: ${tag}${id !== 'None' ? `#${id}` : ''}`);
-    logSite(`${indent}  Classes: ${classes}`);
-    logSite(`${indent}  Attributes: ${attrs}`);
-    logSite(`${indent}  Text: ${text}`);
-    logSite(`${indent}  Title/Aria: ${title}`);
-    logSite(`${indent}  Styles: ${keyStyles}`);
-    logSite(`${indent}  Depth: ${depth}`);
+    logSite(`${indent}--- ${label} ---`);
+    logSite(`${indent}Tag: ${tag}, ID: ${id}`);
+    logSite(`${indent}Classes: ${classes}`);
+    logSite(`${indent}Attributes: ${attrs}`);
+    logSite(`${indent}Text: ${text}`);
+    logSite(`${indent}Title/Aria: ${title}`);
+    logSite(`${indent}Styles: ${keyStyles}`);
+    logSite(`${indent}Bounds: ${bounds}`);
+    logSite(`${indent}Depth: ${depth}`);
+    logSite(`${indent}Parent: ${parent}`);
+    logSite(`${indent}Children: ${children}`);
+    logSite(`${indent}Events: ${events}`);
+  }
+
+  // Get event listeners (Chrome/Firefox devtools API)
+  function getEventListeners(el) {
+    return window.getEventListeners ? window.getEventListeners(el) : {};
   }
 
   // Find chat elements
@@ -89,7 +105,7 @@
       }
     }
 
-    chatContainer = elements.containers[0]?.element || document.body;
+    chatContainer = elements.containers.find(c => c.classes.includes('max-w-3xl'))?.element || elements.containers[0]?.element || document.body;
     logPlugin(`Chat container set to: ${chatContainer.tagName}${chatContainer.id ? `#${chatContainer.id}` : ''}`);
     return elements;
   }
@@ -115,20 +131,7 @@
       const depth = getElementDepth(msg);
       const timestamp = Date.now();
 
-      const messageData = {
-        text,
-        tag,
-        classes,
-        id,
-        attributes,
-        parentTag,
-        parentClasses,
-        parentId,
-        isUser,
-        isAI,
-        depth,
-        timestamp
-      };
+      const messageData = { text, tag, classes, id, attributes, parentTag, parentClasses, parentId, isUser, isAI, depth, timestamp };
 
       if (!messageHistory.some(m => m.text === text && m.timestamp === messageData.timestamp)) {
         messageHistory.push(messageData);
@@ -180,14 +183,14 @@
     });
   }
 
-  // GUI
+  // GUI with Clear button
   function injectDebugGUI() {
     if (document.getElementById('chat-debug-gui')) return;
     const gui = document.createElement('div');
     gui.id = 'chat-debug-gui';
     gui.style.cssText = `
       position: fixed; bottom: 10px; right: 10px; background: #000; color: #fff; 
-      padding: 8px; border-radius: 4px; z-index: 9999; font-size: 12px; width: 320px;
+      padding: 8px; border-radius: 4px; z-index: 9999; font-size: 12px; width: 340px;
     `;
     gui.innerHTML = `
       <div style="font-weight: bold; margin-bottom: 4px;">Chat Flow Debugger</div>
@@ -195,6 +198,7 @@
       <label><input type="checkbox" id="debug-plugin" ${debugPlugin ? 'checked' : ''}> Plugin</label>
       <button id="copy-logs" style="background: #000; border: 1px solid #f00; color: #fff; padding: 2px 4px; margin: 0 4px;">Copy Logs</button>
       <button id="copy-history" style="background: #000; border: 1px solid #0f0; color: #fff; padding: 2px 4px;">Copy History</button>
+      <button id="clear-logs" style="background: #000; border: 1px solid #ff0; color: #fff; padding: 2px 4px; margin: 0 4px;">Clear</button>
       <div id="stats" style="margin-top: 4px;"></div>
     `;
     document.body.appendChild(gui);
@@ -222,6 +226,11 @@
         .then(() => logPlugin('History copied to clipboard'))
         .catch(err => logPlugin(`Copy history failed: ${err}`));
     });
+    document.getElementById('clear-logs').addEventListener('click', () => {
+      debugLogs = [];
+      messageHistory = [];
+      logPlugin('Logs and history cleared');
+    });
 
     setInterval(updateStats, 1000);
   }
@@ -248,6 +257,7 @@
           const removed = Array.from(m.removedNodes).filter(n => n.nodeType === 1);
           logSite(`--- Mutation ---`);
           logSite(`Type: ${m.type}, Target: ${m.target.tagName.toLowerCase()}#${m.target.id || 'no-id'}`);
+          logSite(`Attribute Changed: ${m.attributeName || 'N/A'}, Old Value: ${m.oldValue || 'N/A'}`);
           added.forEach((n, i) => logElement(n, `Added ${i + 1}`, '  '));
           removed.forEach((n, i) => logElement(n, `Removed ${i + 1}`, '  '));
         });
@@ -255,23 +265,29 @@
         trackMessages(updatedElements);
       });
     });
-    observer.observe(document.documentElement, { childList: true, subtree: true, attributes: true, characterData: true });
+    observer.observe(document.documentElement, { childList: true, subtree: true, attributes: true, characterData: true, attributeOldValue: true });
     logPlugin('Observer started on document');
 
     window.addEventListener('resize', () => logSite(`Window resized: ${window.innerWidth}x${window.innerHeight}, DevicePixelRatio: ${window.devicePixelRatio}`));
     window.addEventListener('scroll', () => logSite(`Window scrolled: top=${window.scrollY}, left=${window.scrollX}`));
     window.addEventListener('load', () => logSite(`Window fully loaded: ${document.readyState}`));
-    document.addEventListener('input', (e) => logElement(e.target, 'Input Event Target'));
+    document.addEventListener('input', (e) => {
+      logElement(e.target, 'Input Event Target');
+      logSite(`  Current Value: ${e.target.value?.slice(0, 50) || 'N/A'}${e.target.value?.length > 50 ? '...' : ''}`);
+    });
     document.addEventListener('click', (e) => logElement(e.target, 'Click Event Target'));
     document.addEventListener('keydown', (e) => logSite(`Keydown: ${e.key}, Code: ${e.code}, Ctrl: ${e.ctrlKey}, Alt: ${e.altKey}`));
     document.addEventListener('mouseover', (e) => logElement(e.target, 'Mouseover Target', '  '));
-    window.onerror = (msg, url, line) => logPlugin(`Global error: ${msg} at ${url}:${line}`);
+    document.addEventListener('focus', (e) => logElement(e.target, 'Focus Event Target'));
+    document.addEventListener('blur', (e) => logElement(e.target, 'Blur Event Target'));
+    window.onerror = (msg, url, line, col, error) => logPlugin(`Global error: ${msg} at ${url}:${line}:${col}, Stack: ${error?.stack || 'N/A'}`);
 
     const originalFetch = window.fetch;
     window.fetch = function(...args) {
-      logSite(`Fetch request: ${args[0]}, Method: ${args[1]?.method || 'GET'}`);
+      logSite(`Fetch request: ${args[0]}, Method: ${args[1]?.method || 'GET'}, Headers: ${JSON.stringify(args[1]?.headers || {})}`);
+      const start = performance.now();
       return originalFetch.apply(this, args).then(res => {
-        logSite(`Fetch response: ${args[0]}, Status: ${res.status}`);
+        logSite(`Fetch response: ${args[0]}, Status: ${res.status}, Latency: ${Math.round(performance.now() - start)}ms`);
         return res;
       });
     };
@@ -279,6 +295,11 @@
     XMLHttpRequest.prototype.open = function(method, url) {
       logSite(`XHR request: ${method} ${url}`);
       originalXHROpen.apply(this, arguments);
+    };
+    const originalXHRSend = XMLHttpRequest.prototype.send;
+    XMLHttpRequest.prototype.send = function(body) {
+      logSite(`XHR body: ${body?.slice(0, 50) || 'N/A'}${body?.length > 50 ? '...' : ''}`);
+      originalXHRSend.apply(this, arguments);
     };
 
     setInterval(() => {
