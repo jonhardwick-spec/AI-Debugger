@@ -11,13 +11,13 @@
   let observer = null;
   let isActive = false;
 
-  // Fancy logging with padding and separators
+  // Fancy logging
   function log(type, ...args) {
     if (!isActive) return;
     const now = Date.now();
     if (now - lastLogTime < DEBOUNCE_MS) return;
     lastLogTime = now;
-    const timestamp = new Date(now).toISOString().split('T')[1].slice(0, -1); // e.g., 12:34:56.789
+    const timestamp = new Date(now).toISOString().split('T')[1].slice(0, -1);
     const prefix = `${type.padEnd(7, ' ')} | ${timestamp} |`;
     const msg = `${prefix} ${args.join(' ')}`;
     console.log(`%c${msg}`, `color: ${type === '[Site]' ? '#0ff' : '#f0f'}; background: #222; padding: 2px 4px; border-radius: 2px;`);
@@ -55,7 +55,7 @@
     logSite(`${indent}  Depth: ${depth}`);
   }
 
-  // Find all chat-related elements
+  // Find chat elements
   function findChatElements() {
     const selectors = {
       windows: ['body', '[role="dialog"]', '[class*="window"]', '[id*="window"]'],
@@ -157,6 +157,29 @@
     return depth;
   }
 
+  // Toggle button
+  function injectToggleButton() {
+    if (document.getElementById('chat-debug-toggle')) return;
+    const button = document.createElement('button');
+    button.id = 'chat-debug-toggle';
+    button.textContent = 'Debug';
+    button.style.cssText = `
+      position: fixed; top: 10px; left: 10px; z-index: 9999; 
+      width: 40px; height: 40px; border-radius: 50%; 
+      background: ${isActive ? '#0f0' : '#f00'}; color: #fff; 
+      border: none; cursor: pointer; font-size: 12px; text-align: center;
+    `;
+    document.body.appendChild(button);
+
+    button.addEventListener('click', () => {
+      isActive = !isActive;
+      button.style.background = isActive ? '#0f0' : '#f00';
+      if (isActive) initDebugger();
+      else if (observer) observer.disconnect();
+      console.log(`Chat Flow Debugger ${isActive ? 'activated' : 'deactivated'}`);
+    });
+  }
+
   // GUI
   function injectDebugGUI() {
     if (document.getElementById('chat-debug-gui')) return;
@@ -212,13 +235,7 @@
 
   // Core debugger
   function initDebugger() {
-    if (isActive) {
-      logPlugin('Debugger already active');
-      return;
-    }
-    isActive = true;
     logPlugin('Activating Chat Flow Debugger');
-
     const elements = findChatElements();
     injectDebugGUI();
     trackMessages(elements);
@@ -241,7 +258,6 @@
     observer.observe(document.documentElement, { childList: true, subtree: true, attributes: true, characterData: true });
     logPlugin('Observer started on document');
 
-    // Window and UI events
     window.addEventListener('resize', () => logSite(`Window resized: ${window.innerWidth}x${window.innerHeight}, DevicePixelRatio: ${window.devicePixelRatio}`));
     window.addEventListener('scroll', () => logSite(`Window scrolled: top=${window.scrollY}, left=${window.scrollX}`));
     window.addEventListener('load', () => logSite(`Window fully loaded: ${document.readyState}`));
@@ -251,7 +267,6 @@
     document.addEventListener('mouseover', (e) => logElement(e.target, 'Mouseover Target', '  '));
     window.onerror = (msg, url, line) => logPlugin(`Global error: ${msg} at ${url}:${line}`);
 
-    // Network requests (fetch/XHR)
     const originalFetch = window.fetch;
     window.fetch = function(...args) {
       logSite(`Fetch request: ${args[0]}, Method: ${args[1]?.method || 'GET'}`);
@@ -266,7 +281,6 @@
       originalXHROpen.apply(this, arguments);
     };
 
-    // Periodic re-check
     setInterval(() => {
       const newElements = findChatElements();
       if (newElements.containers[0]?.element !== chatContainer) {
@@ -277,20 +291,11 @@
     }, 5000);
   }
 
-  // Console command handler
-  (function setupConsoleCommand() {
-    const originalConsoleLog = console.log;
-    console.log = function(...args) {
-      originalConsoleLog.apply(console, args);
-      if (args.length === 1 && args[0] === '/debuggerplugin') {
-        chrome.storage.sync.get(['debugSite', 'debugPlugin'], (data) => {
-          debugSite = data.debugSite !== undefined ? data.debugSite : true;
-          debugPlugin = data.debugPlugin !== undefined ? data.debugPlugin : true;
-          initDebugger();
-          console.log('Debugger plugin activated');
-        });
-      }
-    };
-    console.log('[Chat Flow Debugger] Loaded, type /debuggerplugin in console to activate');
-  })();
+  // Startup
+  chrome.storage.sync.get(['debugSite', 'debugPlugin'], (data) => {
+    debugSite = data.debugSite !== undefined ? data.debugSite : true;
+    debugPlugin = data.debugPlugin !== undefined ? data.debugPlugin : true;
+    injectToggleButton();
+    console.log('[Chat Flow Debugger] Loaded, click the top-left button to toggle');
+  });
 })();
